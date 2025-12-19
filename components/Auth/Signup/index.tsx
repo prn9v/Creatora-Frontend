@@ -1,16 +1,28 @@
-'use client'
+"use client";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { GlassCard } from "@/components/ui/GlassCard";
 import Logo from "@/components/Logo";
-import { Eye, EyeOff, Mail, Lock, User, ArrowRight, Check, X } from "lucide-react";
+import {
+  Eye,
+  EyeOff,
+  Mail,
+  Lock,
+  User,
+  ArrowRight,
+  Check,
+  X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { toast } from "sonner";
+import { getBackendUrl } from "@/lib/env";
+import axios from "axios";
 
 const Signup = () => {
-  const router = useRouter() 
+  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -26,15 +38,35 @@ const Signup = () => {
   ];
 
   const passwordStrength = passwordRequirements.filter((r) => r.met).length;
+  const isPasswordValid = passwordStrength === passwordRequirements.length;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!isPasswordValid) {
+      toast.error("Please meet all password requirements.");
+      return;
+    }
+
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false);
+
+    try {
+      const res = await axios.post(
+        `${getBackendUrl()}/users/auth/signup`,
+        {
+          email: formData.email,
+          password: formData.password,
+          name: formData.name,
+        }
+      );
+
+      toast.success("Successfully created account");
       router.push("/onboarding/brand");
-    }, 1500);
+    } catch {
+      toast.error("Invalid credentials");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -51,9 +83,14 @@ const Signup = () => {
           <Logo size="lg" />
         </div>
 
-        <GlassCard className="p-8 animate-fade-in" style={{ animationDelay: "0.1s" }}>
+        <GlassCard
+          className="p-8 animate-fade-in"
+          style={{ animationDelay: "0.1s" }}
+        >
           <div className="text-center mb-8">
-            <h1 className="font-heading text-2xl font-bold mb-2">Create your account</h1>
+            <h1 className="font-heading text-2xl font-bold mb-2">
+              Create your account
+            </h1>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -61,13 +98,18 @@ const Signup = () => {
             <div className="space-y-10">
               <label className="text-sm font-medium pb-2 pl-2">Full name</label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
+                <User
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                  size={18}
+                />
                 <Input
                   type="text"
                   placeholder="John Doe"
                   className="pl-10"
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
                   required
                 />
               </div>
@@ -75,15 +117,22 @@ const Signup = () => {
 
             {/* Email */}
             <div className="space-y-2">
-              <label className="text-sm font-medium pl-2 pb-2">Email address</label>
+              <label className="text-sm font-medium pl-2 pb-2">
+                Email address
+              </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
+                <Mail
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                  size={18}
+                />
                 <Input
                   type="email"
                   placeholder="you@example.com"
                   className="pl-10"
                   value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
                   required
                 />
               </div>
@@ -93,13 +142,18 @@ const Signup = () => {
             <div className="space-y-2">
               <label className="text-sm font-medium pb-2 pl-2">Password</label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
+                <Lock
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                  size={18}
+                />
                 <Input
                   type={showPassword ? "text" : "password"}
                   placeholder="Create a strong password"
-                  className="pl-10 pr-10"
+                  className="pl-10 pr-10 cursor-pointer"
                   value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, password: e.target.value })
+                  }
                   required
                 />
                 <button
@@ -153,17 +207,23 @@ const Signup = () => {
               type="submit"
               variant="gradient"
               size="lg"
-              className="w-full group"
+              className="w-full group cursor-pointer"
               isLoading={isLoading}
             >
               Create Account
-              <ArrowRight className="group-hover:translate-x-1 transition-transform" size={18} />
+              <ArrowRight
+                className="group-hover:translate-x-1 transition-transform"
+                size={18}
+              />
             </Button>
           </form>
 
           <div className="mt-6 text-center text-sm text-muted-foreground">
             Already have an account?{" "}
-            <Link href="/login" className="text-primary hover:underline font-medium">
+            <Link
+              href="/login"
+              className="text-primary hover:underline font-medium cursor-pointer"
+            >
               Log in
             </Link>
           </div>
@@ -171,9 +231,13 @@ const Signup = () => {
 
         <p className="text-center text-xs text-muted-foreground mt-6">
           By signing up, you agree to our{" "}
-          <a href="#" className="text-primary hover:underline">Terms of Service</a>{" "}
+          <a href="#" className="text-primary hover:underline">
+            Terms of Service
+          </a>{" "}
           and{" "}
-          <a href="#" className="text-primary hover:underline">Privacy Policy</a>
+          <a href="#" className="text-primary hover:underline">
+            Privacy Policy
+          </a>
         </p>
       </div>
     </div>

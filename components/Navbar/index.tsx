@@ -36,11 +36,11 @@ const Navbar = () => {
 
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-4">
-            <Button variant="ghost" asChild>
+            <Button variant="ghost" className=" cursor-pointer" asChild>
               <Link href="/login">Log in</Link>
             </Button>
-            <Button variant="gradient" asChild>
-              <Link href="/signup">Start Free Trial</Link>
+            <Button variant="gradient" className=" cursor-pointer" asChild>
+              <Link href="/signup">Sign Up</Link>
             </Button>
           </div>
 
