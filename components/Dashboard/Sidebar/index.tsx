@@ -1,4 +1,4 @@
-'use client'
+"use client";
 import { cn } from "@/lib/utils";
 import Logo from "@/components/Logo";
 import {
@@ -14,6 +14,9 @@ import {
 } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
+import axios from "axios";
+import { toast } from "sonner";
+import { getBackendUrl } from "@/lib/env";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -32,12 +35,22 @@ interface DashboardSidebarProps {
   setCollapsed: (collapsed: boolean) => void;
 }
 
-const DashboardSidebar = ({ collapsed, setCollapsed }: DashboardSidebarProps) => {
+const DashboardSidebar = ({
+  collapsed,
+  setCollapsed,
+}: DashboardSidebarProps) => {
   const router = useRouter();
   const pathname = usePathname();
 
-  const handleLogout = () => {
-    router.push("/");
+  const handleLogout = async () => {
+    try {
+      await axios.post(`${getBackendUrl()}/users/auth/logout`);
+
+      toast.success("Logged out successfully");
+      router.push("/");
+    } catch {
+      toast.error("Failed to log out");
+    }
   };
 
   return (
@@ -106,7 +119,7 @@ const DashboardSidebar = ({ collapsed, setCollapsed }: DashboardSidebarProps) =>
         })}
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground hover:bg-destructive/10 hover:text-destructive transition-all duration-200"
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground hover:bg-destructive/10 hover:text-destructive transition-all duration-200 cursor-pointer"
         >
           <LogOut size={20} />
           {!collapsed && <span className="font-medium text-sm">Log out</span>}
