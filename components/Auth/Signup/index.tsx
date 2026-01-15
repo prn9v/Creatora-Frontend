@@ -21,6 +21,12 @@ import { toast } from "sonner";
 import { getBackendUrl } from "@/lib/env";
 import axios from "axios";
 
+type ApiErrorResponse = {
+  message?: string;
+  error?: string;
+  errors?: Array<{ message?: string }>;
+};
+
 const Signup = () => {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
@@ -51,19 +57,39 @@ const Signup = () => {
     setIsLoading(true);
 
     try {
-      const res = await axios.post(
-        `${getBackendUrl()}/users/auth/signup`,
-        {
-          email: formData.email,
-          password: formData.password,
-          name: formData.name,
-        }
-      );
+      const res = await axios.post(`${getBackendUrl()}/users/auth/signup`, {
+        email: formData.email,
+        password: formData.password,
+        name: formData.name,
+      });
 
       toast.success("Successfully created account");
       router.push("/onboarding/brand");
-    } catch {
-      toast.error("Invalid credentials");
+    } catch (err: unknown) {
+      let message = "Something went wrong. Please try again.";
+
+      if (axios.isAxiosError<ApiErrorResponse>(err)) {
+        // try different common backend response formats
+        message =
+          err.response?.data?.message ||
+          err.response?.data?.error ||
+          err.response?.data?.errors?.[0]?.message ||
+          err.message ||
+          message;
+
+        // Optional: customize common status codes
+        if (err.response?.status === 409) {
+          message = "An account with this email already exists.";
+        }
+        if (err.response?.status === 400) {
+          message = message || "Invalid signup details.";
+        }
+      } else if (err instanceof Error) {
+        message = err.message;
+      }
+
+      toast.error(message);
+      console.error("Signup error:", err);
     } finally {
       setIsLoading(false);
     }
