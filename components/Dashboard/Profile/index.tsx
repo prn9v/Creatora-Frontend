@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,7 @@ import {
   User,
   EyeOff,
   Eye,
+  Loader2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -24,12 +25,15 @@ import { getBackendUrl } from "@/lib/env";
 import { MeResponse } from "@/types/User";
 
 const Profile = () => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+
   useEffect(() => {
     const fetchMe = async () => {
       try {
         const res = await axios.get<MeResponse>(
           `${getBackendUrl()}/users/auth/me`,
-          { withCredentials: true }
+          { withCredentials: true },
         );
 
         const user = res.data;
@@ -42,6 +46,7 @@ const Profile = () => {
             month: "long",
             year: "numeric",
           }),
+          profileImageUrl: user.profileImageUrl ?? "",
         });
       } catch (error) {
         const err = error as AxiosError<{ message?: string }>;
@@ -52,13 +57,25 @@ const Profile = () => {
     fetchMe();
   }, []);
 
+  const getInitials = (name: string) => {
+    if (!name?.trim()) return "U";
+
+    const parts = name.trim().split(/\s+/);
+    const first = parts[0]?.[0] ?? "";
+    const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? "") : "";
+
+    return (first + last).toUpperCase();
+  };
+
   const [isLoading, setIsLoading] = useState(false);
   const [profile, setProfile] = useState({
     name: "",
     email: "",
     bio: "",
     joinDate: "",
+    profileImageUrl: "",
   });
+
   const [passwords, setPasswords] = useState({
     current: "",
     new: "",
@@ -73,18 +90,90 @@ const Profile = () => {
   const [showDeletePassword, setShowDeletePassword] = useState(false);
   const router = useRouter();
 
+  const handleImageClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error("Please select a valid image file");
+      return;
+    }
+
+    // Validate file size (5MB limit)
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Image size should be less than 2MB");
+      return;
+    }
+
+    setIsUploadingImage(true);
+
+    try {
+      // Upload image to get URL
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const uploadResponse = await axios.post<{ url: string; publicId: string }>(
+        `${getBackendUrl()}/image/upload`,
+        formData,
+        {
+          withCredentials: true,
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+
+      const imageUrl = uploadResponse.data.url;
+
+      // Update profile with new image URL
+      await axios.put(
+        `${getBackendUrl()}/users/profile/update-profile`,
+        {
+          name: profile.name,
+          email: profile.email,
+          bio: profile.bio,
+          profileImageUrl: imageUrl,
+        },
+        { withCredentials: true }
+      );
+
+      // Update local state
+      setProfile((prev) => ({
+        ...prev,
+        profileImageUrl: imageUrl,
+      }));
+
+      toast.success("Profile picture updated successfully");
+    } catch (error) {
+      const err = error as AxiosError<{ message?: string }>;
+      toast.error(err.response?.data?.message ?? "Failed to upload image");
+    } finally {
+      setIsUploadingImage(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   const handleSaveProfile = async () => {
     setIsLoading(true);
 
     try {
       await axios.put(
-        `${getBackendUrl()}/users/auth/update-profile`,
+        `${getBackendUrl()}/users/profile/update-profile`,
         {
           name: profile.name,
           email: profile.email,
           bio: profile.bio,
+          profileImageUrl: profile.profileImageUrl,
         },
-        { withCredentials: true }
+        { withCredentials: true },
       );
 
       toast.success("Profile updated successfully");
@@ -112,7 +201,7 @@ const Profile = () => {
           newPassword: passwords.new,
           confirmNewPassword: passwords.confirm,
         },
-        { withCredentials: true }
+        { withCredentials: true },
       );
 
       toast.success("Password updated successfully");
@@ -166,13 +255,45 @@ const Profile = () => {
       <div className=" space-y-8 gap-6">
         {/* Sidebar - Avatar & Info */}
         <GlassCard className="p-6 text-center lg:sticky lg:top-8 h-fit">
-          {/* Avatar */}
           <div className="relative w-24 h-24 mx-auto mb-4">
-            <div className="w-full h-full rounded-full bg-gradient-to-br from-secondary via-primary to-accent flex items-center justify-center text-3xl font-bold text-primary-foreground">
-              JD
-            </div>
-            <button className="absolute bottom-0 right-0 p-2 bg-primary rounded-full text-primary-foreground hover:bg-primary/90 transition-colors shadow-glow-sm">
-              <Camera size={14} />
+            {profile.profileImageUrl ? (
+              <img
+                src={profile.profileImageUrl}
+                alt={`${profile.name} profile`}
+                className="w-full h-full rounded-full object-cover border border-border shadow-glow-sm"
+                onError={(e) => {
+                  // if image fails to load, fallback to initials
+                  e.currentTarget.style.display = "none";
+                  setProfile((prev) => ({ ...prev, profileImageUrl: "" }));
+                }}
+              />
+            ) : (
+              <div className="w-full h-full rounded-full bg-gradient-to-br from-secondary via-primary to-accent flex items-center justify-center text-3xl font-bold text-primary-foreground">
+                {getInitials(profile.name)}
+              </div>
+            )}
+
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+              className="hidden"
+            />
+
+            {/* Camera button */}
+            <button
+              type="button"
+              onClick={handleImageClick}
+              disabled={isUploadingImage}
+              className="absolute bottom-0 right-0 p-2 bg-primary rounded-full text-primary-foreground hover:bg-primary/90 transition-colors shadow-glow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {isUploadingImage ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Camera size={14} />
+              )}
             </button>
           </div>
 
@@ -242,6 +363,7 @@ const Profile = () => {
                 variant="gradient"
                 onClick={handleSaveProfile}
                 isLoading={isLoading}
+                className="cursor-pointer"
               >
                 <Save size={18} />
                 Save Changes
@@ -279,7 +401,7 @@ const Profile = () => {
                         current: !showPassword.current,
                       })
                     }
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
                   >
                     {showPassword.current ? (
                       <EyeOff size={18} />
@@ -312,7 +434,7 @@ const Profile = () => {
                         new: !showPassword.new,
                       })
                     }
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
                   >
                     {showPassword.new ? (
                       <EyeOff size={18} />
@@ -345,7 +467,7 @@ const Profile = () => {
                         confirm: !showPassword.confirm,
                       })
                     }
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
                   >
                     {showPassword.confirm ? (
                       <EyeOff size={18} />
@@ -362,6 +484,7 @@ const Profile = () => {
                 disabled={
                   !passwords.current || !passwords.new || !passwords.confirm
                 }
+                className="cursor-pointer"
               >
                 Update Password
               </Button>
@@ -410,7 +533,7 @@ const Profile = () => {
               </div>
 
               <Button
-                className=" cursor-pointer"
+                className="cursor-pointer"
                 variant="destructive"
                 onClick={handleDeleteAccount}
                 isLoading={isLoading}
