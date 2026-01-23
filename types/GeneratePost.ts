@@ -67,3 +67,47 @@ export interface GenerateResponse {
   generatedAt: string;
   creditsUsed: number;
 }
+
+export interface GeneratedPost {
+  id: string;
+  content: string;
+  platform: string;
+  sourceIdeaId: string | null;
+  userId: string;
+  createdAt: string;
+}
+
+export interface ParsedContent {
+  isJson: boolean;
+  text?: {
+    caption: string;
+    hashtags?: string[];
+  };
+  image?: {
+    caption: string;
+    hashtags?: string[];
+    imagePrompt?: string;
+    imageUrl?: string;
+  };
+  video?: {
+    hook?: string;
+    caption: string;
+    script: string;
+    shootingInstructions?: string;
+    audienceEngagement?: string;
+    hashtags?: string[];
+  };
+  plainText?: string;
+}
+
+export type GeneratedPostsMeta = {
+  total: number;
+  noofpages: number;
+  page: number;
+  limit: number;
+};
+
+export type GeneratedPostsResponse = {
+  data: GeneratedPost[];
+  meta: GeneratedPostsMeta;
+};
