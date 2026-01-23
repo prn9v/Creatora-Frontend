@@ -11,6 +11,7 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  Image,
 } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
@@ -22,6 +23,7 @@ const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Content Ideas", href: "/ideas", icon: Lightbulb },
   { name: "Generate Post", href: "/generate", icon: PenTool },
+  { name: "Generated Posts", href: "/generated-posts", icon: Image },
   { name: "Weekly Planner", href: "/planner", icon: Calendar },
 ];
 
