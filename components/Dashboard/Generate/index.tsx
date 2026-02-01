@@ -21,7 +21,9 @@ import RegenerateButton from "./RegenerateButton";
 
 const InstagramGenerate = () => {
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedData, setGeneratedData] = useState<GenerateResponse | null>(null);
+  const [generatedData, setGeneratedData] = useState<GenerateResponse | null>(
+    null,
+  );
   const [videoScript, setVideoScript] = useState<VideoScript | null>(null);
   const [schedule, setSchedule] = useState<PostingSchedule | null>(null);
   const [showVideoScript, setShowVideoScript] = useState(false);
@@ -41,14 +43,19 @@ const InstagramGenerate = () => {
       const response = await axios.post<GenerateResponse>(
         `${getBackendUrl()}/content-generation/generate`,
         {},
-        { withCredentials: true },
+        {
+          withCredentials: true,
+          timeout: 130000,
+        },
       );
 
       setGeneratedData(response.data);
       toast.success("Content generated successfully!");
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        toast.error(error.response?.data?.message || "Failed to generate content");
+        toast.error(
+          error.response?.data?.message || "Failed to generate content",
+        );
       } else {
         toast.error("An unexpected error occurred");
       }
@@ -89,7 +96,8 @@ const InstagramGenerate = () => {
   };
 
   const handlePostToInstagram = async () => {
-    if (!generatedData?.preview.caption || !generatedData?.preview.postImage) return;
+    if (!generatedData?.preview.caption || !generatedData?.preview.postImage)
+      return;
 
     try {
       const fullCaption = `${generatedData.preview.caption}\n\n${generatedData.preview.hashtags.join(" ")}`;
@@ -146,7 +154,9 @@ const InstagramGenerate = () => {
       toast.success("Video script loaded!");
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        toast.error(error.response?.data?.message || "Failed to load video script");
+        toast.error(
+          error.response?.data?.message || "Failed to load video script",
+        );
       } else {
         toast.error("An unexpected error occurred");
       }
@@ -214,7 +224,10 @@ const InstagramGenerate = () => {
             <PostingScheduleSection schedule={schedule} />
           )}
 
-          <RegenerateButton onGenerate={handleGenerate} isGenerating={isGenerating} />
+          <RegenerateButton
+            onGenerate={handleGenerate}
+            isGenerating={isGenerating}
+          />
         </div>
       )}
     </div>

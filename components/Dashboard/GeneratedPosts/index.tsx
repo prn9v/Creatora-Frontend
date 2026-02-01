@@ -31,7 +31,7 @@ const GeneratedPosts = () => {
   const [searchInput, setSearchInput] = useState<string>("");
   const [search, setSearch] = useState<string>("");
   const [page, setPage] = useState<number>(1);
-  const [limit] = useState<number>(10);
+  const [limit] = useState<number>(9);
 
   const [orderBy] = useState<string>("createdAt");
 
