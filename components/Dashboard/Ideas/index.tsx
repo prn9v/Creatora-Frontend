@@ -1,260 +1,310 @@
-'use client'
-import { useState } from "react";
-import { GlassCard } from "@/components/ui/GlassCard";
+"use client";
+
+import { useState, useEffect } from "react";
+import axios from "axios";
+import { toast } from "sonner";
+import { getBackendUrl } from "@/lib/env";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Sparkles,
-  Loader2,
-  Bookmark,
-  RefreshCw,
-  ArrowRight,
-  Twitter,
-  Linkedin,
-  FileText,
-  TrendingUp,
-  Clock,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Sparkles, Loader2, TrendingUp, Heart } from "lucide-react";
+import DashboardLayout from "@/app/(dashboard)/layout";
+import { ContentIdea } from "./IdeaCard";
+import IdeasSection from "./IdeasSection";
+import IdeaDetailDialog from "./IdeaDetailDialog";
 
-const sampleIdeas = [
-  {
-    id: "1",
-    title: "The Hidden Cost of Context Switching",
-    description: "Explore how constantly switching between tasks can reduce productivity by up to 40% and share practical strategies to minimize it.",
-    platforms: ["twitter", "linkedin"],
-    engagement: "high",
-    saved: false,
-  },
-  {
-    id: "2",
-    title: "5 Morning Habits of Successful Founders",
-    description: "Share the morning routines that helped successful entrepreneurs build their companies, backed by research and personal insights.",
-    platforms: ["linkedin", "blog"],
-    engagement: "very-high",
-    saved: true,
-  },
-  {
-    id: "3",
-    title: "Why Your First 100 Users Matter Most",
-    description: "Discuss the importance of early adopters and how to turn them into brand advocates.",
-    platforms: ["twitter"],
-    engagement: "medium",
-    saved: false,
-  },
-  {
-    id: "4",
-    title: "The Art of Saying No",
-    description: "How declining opportunities strategically can accelerate your path to success.",
-    platforms: ["linkedin", "blog"],
-    engagement: "high",
-    saved: false,
-  },
-  {
-    id: "5",
-    title: "Building in Public: Lessons Learned",
-    description: "Share your journey of building in public, including wins, failures, and key takeaways.",
-    platforms: ["twitter", "linkedin"],
-    engagement: "very-high",
-    saved: false,
-  },
-  {
-    id: "6",
-    title: "The Compound Effect of Daily Learning",
-    description: "How dedicating just 30 minutes a day to learning can transform your career over time.",
-    platforms: ["linkedin"],
-    engagement: "medium",
-    saved: false,
-  },
-];
+// ─── API Response Types ───────────────────────────────────────────────────────
 
-const platformIcons = {
-  twitter: Twitter,
-  linkedin: Linkedin,
-  blog: FileText,
-};
+interface ApiIdea {
+  id?: string;
+  _id?: string;
+  title: string;
+  hook?: string;
+  description?: string;
+  format?: string;
+  angle?: string;
+  cta?: string;
+  platform?: string;
+  source?: string;
+  trendSource?: string;
+  trendTitle?: string;
+  isFavorite?: boolean;
+}
 
-const engagementLabels = {
-  medium: { label: "Medium", color: "warning" },
-  high: { label: "High", color: "accent" },
-  "very-high": { label: "Very High", color: "success" },
-};
+interface GenerateIdeasResponse {
+  ideas?: ApiIdea[];
+  data?: ApiIdea[];
+}
 
-type FilterType = "all" | "twitter" | "linkedin" | "blog";
+interface TrendingIdeasResponse {
+  ideas?: ApiIdea[];
+  data?: ApiIdea[];
+}
+
+// ─── Mapper ───────────────────────────────────────────────────────────────────
+
+const mapApiIdeaToContentIdea = (
+  idea: ApiIdea,
+  source: "AI" | "TRENDING",
+): ContentIdea => ({
+  id: idea.id ?? idea._id ?? crypto.randomUUID(),
+  title: idea.title,
+  hook: idea.hook,
+  description: idea.description,
+  format: idea.format,
+  angle: idea.angle,
+  cta: idea.cta,
+  platform: idea.platform,
+  source: idea.source ?? source,
+  trendSource: idea.trendSource,
+  trendTitle: idea.trendTitle,
+  isFavorite: idea.isFavorite ?? false,
+});
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 const Ideas = () => {
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [ideas, setIdeas] = useState(sampleIdeas);
-  const [filter, setFilter] = useState<FilterType>("all");
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [isGeneratingTrending, setIsGeneratingTrending] = useState(false);
+  const [isFetchingFavorites, setIsFetchingFavorites] = useState(true);
+  const [favoritingId, setFavoritingId] = useState<string | null>(null);
 
-  const generateIdeas = () => {
-    setIsGenerating(true);
-    setTimeout(() => {
-      setIsGenerating(false);
-    }, 2000);
+  const [aiIdeas, setAiIdeas] = useState<ContentIdea[]>([]);
+  const [trendingIdeas, setTrendingIdeas] = useState<ContentIdea[]>([]);
+  const [favoriteIdeas, setFavoriteIdeas] = useState<ContentIdea[]>([]);
+
+  const [selectedIdea, setSelectedIdea] = useState<ContentIdea | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  useEffect(() => {
+    handleFetchFavoriteIdeas();
+  }, []);
+
+  // ── Generate AI Ideas ────────────────────────────────────────────────────────
+  const handleGenerateAiIdeas = async () => {
+    setIsGeneratingAi(true);
+    try {
+      const response = await axios.post<GenerateIdeasResponse>(
+        `${getBackendUrl()}/ideas/generate`,
+        {},
+        { withCredentials: true },
+      );
+
+      const raw = response.data?.ideas ?? response.data?.data ?? [];
+      const mapped = raw.map((idea) => mapApiIdeaToContentIdea(idea, "AI"));
+      setAiIdeas(mapped);
+      toast.success("AI ideas generated successfully!");
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        toast.error(
+          error.response?.data?.message ?? "Failed to generate AI ideas",
+        );
+      } else {
+        toast.error("An unexpected error occurred");
+      }
+    } finally {
+      setIsGeneratingAi(false);
+    }
   };
 
-  const toggleSave = (id: string) => {
-    setIdeas(ideas.map((idea) =>
-      idea.id === id ? { ...idea, saved: !idea.saved } : idea
-    ));
+  // ── Fetch Trending Ideas ─────────────────────────────────────────────────────
+  const handleFetchTrendingIdeas = async () => {
+    setIsGeneratingTrending(true);
+    try {
+      const response = await axios.get<TrendingIdeasResponse>(
+        `${getBackendUrl()}/ideas/trending`,
+        { withCredentials: true },
+      );
+
+      const raw = response.data?.ideas ?? response.data?.data ?? [];
+      const mapped = raw.map((idea) =>
+        mapApiIdeaToContentIdea(idea, "TRENDING"),
+      );
+      setTrendingIdeas(mapped);
+      toast.success("Trending ideas fetched successfully!");
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        toast.error(
+          error.response?.data?.message ?? "Failed to fetch trending ideas",
+        );
+      } else {
+        toast.error("An unexpected error occurred");
+      }
+    } finally {
+      setIsGeneratingTrending(false);
+    }
   };
 
-  const filteredIdeas = filter === "all"
-    ? ideas
-    : ideas.filter((idea) => idea.platforms.includes(filter));
+  // ── Toggle Favorite (API Call) ───────────────────────────────────────────────
+  const toggleFavorite = async (id: string) => {
+    setFavoritingId(id);
+    try {
+      await axios.post(
+        `${getBackendUrl()}/ideas/favorite`,
+        { ideaId: id },
+        { withCredentials: true },
+      );
+
+      // Local state update
+      const updateList = (prev: ContentIdea[]) =>
+        prev.map((idea) =>
+          idea.id === id ? { ...idea, isFavorite: !idea.isFavorite } : idea,
+        );
+
+      setAiIdeas(updateList);
+      setTrendingIdeas(updateList);
+      setFavoriteIdeas(updateList);
+
+      if (selectedIdea?.id === id) {
+        setSelectedIdea((prev) =>
+          prev ? { ...prev, isFavorite: !prev.isFavorite } : null,
+        );
+      }
+
+      toast.success("Favorites updated!");
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        toast.error(
+          error.response?.data?.message ?? "Failed to update favorite",
+        );
+      } else {
+        toast.error("An unexpected error occurred");
+      }
+    } finally {
+      setFavoritingId(null);
+    }
+  };
+
+  // ── Fetch Favorite Ideas ─────────────────────────────────────────────────────
+  const handleFetchFavoriteIdeas = async () => {
+    setIsFetchingFavorites(true);
+    try {
+      const response = await axios.get<ApiIdea[]>(
+        `${getBackendUrl()}/ideas/favorites`,
+        { withCredentials: true },
+      );
+
+      const mapped = response.data.map((idea) =>
+        mapApiIdeaToContentIdea(idea, "AI"),
+      );
+
+      setFavoriteIdeas(mapped);
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        toast.error(
+          error.response?.data?.message ?? "Failed to fetch favorite ideas",
+        );
+      } else {
+        toast.error("An unexpected error occurred");
+      }
+    } finally {
+      setIsFetchingFavorites(false);
+    }
+  };
+
+  const openDetail = (idea: ContentIdea) => {
+    setSelectedIdea(idea);
+    setDialogOpen(true);
+  };
 
   return (
-      <div className="p-8">
+    <DashboardLayout>
+      <div className="p-8 max-w-7xl">
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="font-heading text-3xl font-bold mb-1">Content Ideas</h1>
+            <h1 className="text-3xl font-bold mt-10">Content Ideas</h1>
             <p className="text-muted-foreground">
-              AI-generated ideas tailored to your brand and audience.
+              AI-generated &amp; trending ideas tailored to your brand.
             </p>
           </div>
+        </div>
+
+        {/* AI Generated Ideas */}
+        <IdeasSection
+          title="AI Generated Ideas"
+          icon={<Sparkles size={20} className="text-primary" />}
+          ideas={aiIdeas}
+          emptyMessage="Generate your first batch of AI content ideas."
+          onToggleFavorite={toggleFavorite}
+          onSelect={openDetail}
+          favoritingId={favoritingId}
+        >
           <Button
             variant="gradient"
             size="lg"
-            onClick={generateIdeas}
-            disabled={isGenerating}
-            className="group"
+            onClick={handleGenerateAiIdeas}
+            disabled={isGeneratingAi}
+            className="cursor-pointer"
           >
-            {isGenerating ? (
+            {isGeneratingAi ? (
               <>
-                <Loader2 className="animate-spin" size={18} />
+                <Loader2 className="animate-spin" size={14} />
                 Generating...
               </>
             ) : (
               <>
-                <Sparkles size={18} />
-                Generate New Ideas
+                <Sparkles size={14} />
+                Generate New AI Ideas
               </>
             )}
           </Button>
-        </div>
+        </IdeasSection>
 
-        {/* Filters */}
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-          {(["all", "twitter", "linkedin", "blog"] as FilterType[]).map((f) => (
-            <Button
-              key={f}
-              variant={filter === f ? "default" : "outline"}
-              size="sm"
-              onClick={() => setFilter(f)}
-              className={cn(
-                "capitalize",
-                filter === f && "shadow-glow-sm"
-              )}
-            >
-              {f === "all" ? "All Ideas" : f}
-            </Button>
-          ))}
-        </div>
+        {/* Trending Ideas */}
+        <IdeasSection
+          title="Trending Ideas"
+          icon={<TrendingUp size={20} className="text-warning" />}
+          ideas={trendingIdeas}
+          emptyMessage="No trending ideas available right now."
+          onToggleFavorite={toggleFavorite}
+          onSelect={openDetail}
+          favoritingId={favoritingId}
+        >
+          <Button
+            variant="gradient"
+            size="lg"
+            onClick={handleFetchTrendingIdeas}
+            disabled={isGeneratingTrending}
+            className="cursor-pointer"
+          >
+            {isGeneratingTrending ? (
+              <>
+                <Loader2 className="animate-spin" size={14} />
+                Fetching...
+              </>
+            ) : (
+              <>
+                <TrendingUp size={14} />
+                Generate Trending Ideas
+              </>
+            )}
+          </Button>
+        </IdeasSection>
 
-        {/* Ideas Grid */}
-        {isGenerating ? (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <GlassCard key={i} className="p-6 animate-pulse">
-                <div className="h-4 w-3/4 bg-muted rounded mb-3" />
-                <div className="space-y-2 mb-4">
-                  <div className="h-3 w-full bg-muted rounded" />
-                  <div className="h-3 w-5/6 bg-muted rounded" />
-                </div>
-                <div className="flex gap-2">
-                  <div className="h-6 w-16 bg-muted rounded-full" />
-                  <div className="h-6 w-16 bg-muted rounded-full" />
-                </div>
-              </GlassCard>
-            ))}
-          </div>
-        ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredIdeas.map((idea, index) => (
-              <GlassCard
-                key={idea.id}
-                hover
-                className="p-6 animate-fade-in flex flex-col"
-                style={{ animationDelay: `${index * 0.05}s`, animationFillMode: "forwards" }}
-              >
-                {/* Header */}
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <h3 className="font-heading font-semibold text-lg leading-tight">
-                    {idea.title}
-                  </h3>
-                  <button
-                    onClick={() => toggleSave(idea.id)}
-                    className={cn(
-                      "flex-shrink-0 p-1.5 rounded-lg transition-colors",
-                      idea.saved
-                        ? "text-warning bg-warning/10"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    <Bookmark size={18} fill={idea.saved ? "currentColor" : "none"} />
-                  </button>
-                </div>
+        {/* Favorites */}
+        <IdeasSection
+          title="Your Favorites"
+          icon={<Heart size={20} className="text-destructive" />}
+          ideas={favoriteIdeas}
+          emptyMessage={
+            isFetchingFavorites
+              ? "Loading your favorites..."
+              : "Tap the heart on any idea to save it here."
+          }
+          onToggleFavorite={toggleFavorite}
+          onSelect={openDetail}
+          favoritingId={favoritingId}
+        />
 
-                {/* Description */}
-                <p className="text-sm text-muted-foreground mb-4 flex-1">
-                  {idea.description}
-                </p>
-
-                {/* Platforms */}
-                <div className="flex items-center gap-2 mb-4">
-                  {idea.platforms.map((platform) => {
-                    const Icon = platformIcons[platform as keyof typeof platformIcons];
-                    return (
-                      <div
-                        key={platform}
-                        className="p-1.5 rounded-lg bg-muted"
-                        title={platform}
-                      >
-                        <Icon size={14} className="text-muted-foreground" />
-                      </div>
-                    );
-                  })}
-                  <div className="flex-1" />
-                  <Badge variant={engagementLabels[idea.engagement as keyof typeof engagementLabels].color as "warning" | "accent" | "success"}>
-                    <TrendingUp size={12} className="mr-1" />
-                    {engagementLabels[idea.engagement as keyof typeof engagementLabels].label}
-                  </Badge>
-                </div>
-
-                {/* Actions */}
-                <div className="flex gap-2">
-                  <Button variant="gradient" size="sm" className="flex-1 group">
-                    Use This
-                    <ArrowRight className="group-hover:translate-x-1 transition-transform" size={14} />
-                  </Button>
-                  <Button variant="outline" size="sm" className="px-3">
-                    <RefreshCw size={14} />
-                  </Button>
-                </div>
-              </GlassCard>
-            ))}
-          </div>
-        )}
-
-        {/* Empty State */}
-        {filteredIdeas.length === 0 && !isGenerating && (
-          <div className="text-center py-16">
-            <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-              <Sparkles size={32} className="text-muted-foreground" />
-            </div>
-            <h3 className="font-heading font-semibold text-xl mb-2">No ideas yet</h3>
-            <p className="text-muted-foreground mb-6">
-              Generate your first batch of content ideas.
-            </p>
-            <Button variant="gradient" onClick={generateIdeas}>
-              <Sparkles size={18} />
-              Generate Ideas
-            </Button>
-          </div>
-        )}
+        {/* Detail Dialog */}
+        <IdeaDetailDialog
+          idea={selectedIdea}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          onToggleFavorite={toggleFavorite}
+          isFavoriting={favoritingId === selectedIdea?.id}
+        />
       </div>
+    </DashboardLayout>
   );
 };
 
