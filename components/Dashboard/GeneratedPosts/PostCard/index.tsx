@@ -1,327 +1,187 @@
+// components/Planner/PostCard.tsx
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { GlassCard } from "@/components/ui/GlassCard";
-import { GeneratedPost, ParsedContent } from "@/types/GeneratePost";
+import { cn } from "@/lib/utils";
+import type { ScheduledPost } from "@/types/Planner";
 import {
-  Badge,
-  Calendar,
+  Ban,
   Check,
-  Copy,
-  Download,
-  Eye,
-  ImageIcon,
-  Send,
-  Video,
-  Type,
+  Clock,
+  Edit2,
+  Instagram,
+  Trash2,
 } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
-import { format } from "date-fns";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 
-const PostCard = ({ post }: { post: GeneratedPost }) => {
-  const [copiedSection, setCopiedSection] = useState<string | null>(null);
+interface PostCardProps {
+  post: ScheduledPost;
+  onEdit: (post: ScheduledPost) => void;
+  onDelete: (slotId: string) => void;
+  onMarkPosted: (slotId: string) => void;
+  onMarkSkipped: (slotId: string) => void;
+}
 
-  const parseContent = (content: string): ParsedContent => {
-    try {
-      const parsed = JSON.parse(content);
-      return {
-        isJson: true,
-        text: parsed.text,
-        image: parsed.image,
-        video: parsed.video,
-      };
-    } catch {
-      return {
-        isJson: false,
-        plainText: content,
-      };
+const STATUS_STYLES: Record<ScheduledPost["status"], string> = {
+  SCHEDULED: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800",
+  POSTED:    "bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-800",
+  SKIPPED:   "bg-muted text-muted-foreground border-border",
+};
+
+const STATUS_LABELS: Record<ScheduledPost["status"], string> = {
+  SCHEDULED: "Scheduled",
+  POSTED:    "Posted",
+  SKIPPED:   "Skipped",
+};
+
+export function PostCard({
+  post,
+  onEdit,
+  onDelete,
+  onMarkPosted,
+  onMarkSkipped,
+}: PostCardProps) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const visibleHashtags = post.hashtags.slice(0, 4);
+  const extraCount = post.hashtags.length - visibleHashtags.length;
+
+  const isPosted  = post.status === "POSTED";
+  const isSkipped = post.status === "SKIPPED";
+  const isDone    = isPosted || isSkipped;
+
+  const handleDeleteClick = () => {
+    if (confirmDelete) {
+      onDelete(post.id);
+    } else {
+      setConfirmDelete(true);
+      setTimeout(() => setConfirmDelete(false), 3000);
     }
-  };
-
-  const parsed = parseContent(post.content);
-
-  const handleCopy = async (text: string, section: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopiedSection(section);
-    toast.success("Caption copied to clipboard!");
-    setTimeout(() => setCopiedSection(null), 2000);
-  };
-
-  const handleDownloadImage = async (imageUrl: string) => {
-    try {
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `post-image-${post.id.slice(0, 8)}.jpg`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-      toast.success("Image downloaded successfully");
-    } catch {
-      toast.error("Image Download failed");
-    }
-  };
-
-  const handlePostToInstagram = () => {
-    toast.success("Opening Instagram...");
-    // In production, integrate with Instagram API or deep link
-    window.open("https://instagram.com", "_blank");
-  };
-
-  const getDisplayCaption = () => {
-    if (parsed.isJson) {
-      return (
-        parsed.text?.caption ||
-        parsed.image?.caption ||
-        parsed.video?.caption ||
-        ""
-      );
-    }
-    return parsed.plainText || "";
-  };
-
-  const getHashtags = () => {
-    if (parsed.isJson) {
-      return (
-        parsed.text?.hashtags ||
-        parsed.image?.hashtags ||
-        parsed.video?.hashtags ||
-        []
-      );
-    }
-    return [];
   };
 
   return (
-    <GlassCard
-      className="p-6 animate-fade-in"
-      style={{ animationFillMode: "forwards" }}
+    <div
+      className={cn(
+        "flex flex-col gap-2 rounded-xl border border-border bg-background p-3 text-sm transition-opacity",
+        isDone && "opacity-60"
+      )}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground">
-            <Calendar size={12} />
-            {format(new Date(post.createdAt), "MMM dd, yyyy 'at' h:mm a")}
-          </div>
+      {/* Time + badges */}
+      <div className="flex items-start justify-between gap-2">
+        <span className="flex items-center gap-1 font-mono text-[11px] text-muted-foreground">
+          <Clock size={11} />
+          {post.scheduledTime}
+        </span>
+        <div className="flex flex-wrap justify-end gap-1">
+          <span
+            className={cn(
+              "rounded-full border px-2 py-0.5 text-[10px] font-medium",
+              STATUS_STYLES[post.status]
+            )}
+          >
+            {STATUS_LABELS[post.status]}
+          </span>
+          <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+            {post.platform}
+          </span>
+          {post.format && (
+            <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+              {post.format}
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Content Sections */}
-      <div className="space-y-4">
-        {/* Image Section */}
-        {parsed.image?.imageUrl &&
-          !parsed.image.imageUrl.includes("placehold.co") && (
-            <div className="relative group">
-              <div className="aspect-square rounded-xl overflow-hidden bg-background-secondary">
-                <img
-                  src={parsed.image.imageUrl}
-                  alt="Generated post"
-                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                />
-              </div>
-              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl flex items-center justify-center gap-3">
-                <Button
-                  className=" cursor-pointer"
-                  variant="glass"
-                  size="sm"
-                  onClick={() => handleDownloadImage(parsed.image!.imageUrl!)}
-                >
-                  <Download size={16} />
-                  Download
-                </Button>
-              </div>
-            </div>
-          )}
+      {/* Title */}
+      <p className="line-clamp-2 text-[13px] font-medium leading-snug text-foreground">
+        {post.title}
+      </p>
 
-        {/* Text Caption */}
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <Type size={14} />
-            Caption
-          </div>
-          <p className="text-sm leading-relaxed line-clamp-4">
-            {getDisplayCaption()}
-          </p>
-          {getHashtags().length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {getHashtags()
-                .slice(0, 5)
-                .map((tag, index) => (
-                  <Badge key={index} className="text-xs">
-                    {tag.startsWith("#") ? tag : `#${tag}`}
-                  </Badge>
-                ))}
-              {getHashtags().length > 5 && (
-                <Badge className="text-xs">
-                  +{getHashtags().length - 5} more
-                </Badge>
-              )}
-            </div>
+      {/* Caption */}
+      {post.caption && (
+        <p className="line-clamp-2 text-[12px] leading-relaxed text-muted-foreground">
+          {post.caption}
+        </p>
+      )}
+
+      {/* Hashtags */}
+      {visibleHashtags.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {visibleHashtags.map((tag) => (
+            <span
+              key={tag}
+              className="text-[10px] text-blue-500 dark:text-blue-400"
+            >
+              {tag.startsWith("#") ? tag : `#${tag}`}
+            </span>
+          ))}
+          {extraCount > 0 && (
+            <span className="text-[10px] text-muted-foreground">
+              +{extraCount}
+            </span>
           )}
         </div>
+      )}
 
-        {/* Image Caption (if different from text) */}
-        {parsed.image?.caption &&
-          parsed.image.caption !== parsed.text?.caption && (
-            <div className="space-y-2 p-3 rounded-lg bg-background-secondary/50">
-              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <ImageIcon size={14} />
-                Image Caption
-              </div>
-              <p className="text-sm leading-relaxed line-clamp-3">
-                {parsed.image.caption}
-              </p>
-            </div>
-          )}
-
-        {/* Video Script Dialog */}
-        {parsed.video && (
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button variant="outline-glow" size="sm" className="w-full cursor-pointer">
-                <Video size={16} />
-                View Video Script
-                <Eye size={14} className="ml-auto" />
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <Video size={20} className="text-primary" />
-                  Video Content Details
-                </DialogTitle>
-              </DialogHeader>
-              <div className="space-y-6 mt-4">
-                {parsed.video.hook && (
-                  <div>
-                    <h4 className="text-sm font-semibold text-primary mb-2">
-                      Hook
-                    </h4>
-                    <p className="text-sm bg-background-secondary p-3 rounded-lg">
-                      {parsed.video.hook}
-                    </p>
-                  </div>
-                )}
-                <div>
-                  <h4 className="text-sm font-semibold text-primary mb-2">
-                    Caption
-                  </h4>
-                  <p className="text-sm bg-background-secondary p-3 rounded-lg">
-                    {parsed.video.caption}
-                  </p>
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold text-primary mb-2">
-                    Script
-                  </h4>
-                  <p className="text-sm bg-background-secondary p-3 rounded-lg whitespace-pre-wrap">
-                    {parsed.video.script}
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className=" mt-2 cursor-pointer"
-                    onClick={() => handleCopy(parsed.video!.script, "Script")}
-                  >
-                    {copiedSection === "Script" ? (
-                      <Check size={14} />
-                    ) : (
-                      <Copy size={14} />
-                    )}
-                    Copy Script
-                  </Button>
-                </div>
-                {parsed.video.shootingInstructions && (
-                  <div>
-                    <h4 className="text-sm font-semibold text-primary mb-2">
-                      Shooting Instructions
-                    </h4>
-                    <p className="text-sm bg-background-secondary p-3 rounded-lg">
-                      {parsed.video.shootingInstructions}
-                    </p>
-                  </div>
-                )}
-                {parsed.video.audienceEngagement && (
-                  <div>
-                    <h4 className="text-sm font-semibold text-primary mb-2">
-                      Audience Engagement
-                    </h4>
-                    <p className="text-sm bg-background-secondary p-3 rounded-lg">
-                      {parsed.video.audienceEngagement}
-                    </p>
-                  </div>
-                )}
-                {parsed.video.hashtags && parsed.video.hashtags.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-semibold text-primary mb-2">
-                      Hashtags
-                    </h4>
-                    <div className="flex flex-wrap gap-1.5">
-                      {parsed.video.hashtags.map((tag, index) => (
-                        <Badge key={index}>
-                          {tag.startsWith("#") ? tag : `#${tag}`}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
-      </div>
+      {/* AI rationale */}
+      {post.aiRationale && (
+        <p className="line-clamp-2 border-l-2 border-border pl-2 text-[11px] italic text-muted-foreground">
+          {post.aiRationale}
+        </p>
+      )}
 
       {/* Actions */}
-      <div className="flex gap-2 mt-6 pt-4 border-t border-border">
-        {parsed.image?.imageUrl &&
-          !parsed.image.imageUrl.includes("placehold.co") && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1 cursor-pointer"
-              onClick={() => handleDownloadImage(parsed.image!.imageUrl!)}
-            >
-              <Download size={14} />
-              Download
-            </Button>
-          )}
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex-1 cursor-pointer"
-          onClick={() => handleCopy(getDisplayCaption(), "Caption")}
-        >
-          {copiedSection === "Caption" ? (
-            <Check size={14} />
-          ) : (
-            <Copy size={14} />
-          )}
-          Copy
-        </Button>
-        <Button
-          variant="gradient"
-          size="sm"
-          className="flex-1 cursor-pointer"
-          onClick={handlePostToInstagram}
-        >
-          <Send size={14} />
-          Post
-        </Button>
-      </div>
-    </GlassCard>
-  );
-};
+      <div className="flex gap-1.5 border-t border-border pt-2">
+        {!isPosted && !isSkipped && (
+          <button
+            onClick={() => onMarkPosted(post.id)}
+            className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-border py-1.5 text-[11px] text-muted-foreground transition-colors hover:border-green-300 hover:bg-green-50 hover:text-green-700 dark:hover:bg-green-950 dark:hover:text-green-300"
+          >
+            <Check size={12} />
+            Posted
+          </button>
+        )}
 
-export default PostCard;
+        {isSkipped && (
+          <button
+            onClick={() => onMarkPosted(post.id)}
+            className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-border py-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted"
+          >
+            <Instagram size={12} />
+            Reschedule
+          </button>
+        )}
+
+        <button
+          onClick={() => onEdit(post)}
+          className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-border py-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted"
+        >
+          <Edit2 size={12} />
+          Edit
+        </button>
+
+        {!isPosted && !isSkipped && (
+          <button
+            onClick={() => onMarkSkipped(post.id)}
+            className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-border py-1.5 text-[11px] text-muted-foreground transition-colors hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700 dark:hover:bg-orange-950 dark:hover:text-orange-300"
+          >
+            <Ban size={12} />
+            Skip
+          </button>
+        )}
+
+        <button
+          onClick={handleDeleteClick}
+          className={cn(
+            "flex items-center justify-center rounded-lg border px-2.5 py-1.5 text-[11px] transition-colors",
+            confirmDelete
+              ? "border-red-300 bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300"
+              : "border-border text-muted-foreground hover:border-red-300 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-950 dark:hover:text-red-300"
+          )}
+          title={confirmDelete ? "Click again to confirm" : "Delete slot"}
+        >
+          <Trash2 size={12} />
+        </button>
+      </div>
+    </div>
+  );
+}
