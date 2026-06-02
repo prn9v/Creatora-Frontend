@@ -1,302 +1,437 @@
-'use client'
+"use client";
 
-import { useState } from "react";
-import { GlassCard } from "@/components/ui/GlassCard";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import axios from "axios";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+
+import type {
+  DayIndex,
+  FavoritedIdea,
+  ScheduledPost,
+  SlotCreatePayload,
+  SlotUpdatePayload,
+  WeeklyPlan,
+} from "@/types/Planner";
+
 import {
-  ChevronLeft,
-  ChevronRight,
-  Plus,
-  Sparkles,
-  Loader2,
-  Twitter,
-  Linkedin,
-  FileText,
-  Edit2,
-  Trash2,
-  Check,
-  X,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+  addDays,
+  formatWeekLabel,
+  formatYMD,
+  getWeekMonday,
+} from "@/types/Planner";
 
-interface PlannerDay {
-  date: number;
-  day: string;
-  topic?: string;
+import PlannerHeader from "./PlannerHeader";
+import { HistoryDialog } from "./HistoryDialog";
+import { PlannerSkeleton } from "./PlannerSkeleton";
+import { EmptyPlannerState } from "./EmptyPlannerState";
+import { GeneratePlanBar } from "./GeneratePlanBar";
+import { WeekGrid } from "./WeekGrid";
+import { UnscheduledIdeasPanel } from "./UnscheduledIdeasPanel";
+import { RemindersPanel } from "./RemindersPanel";
+import { EditSlotModal } from "./EditSlotModal";
+import { AddSlotModal } from "./AddSlotModal";
+import { getBackendUrl } from "@/lib/env";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface ApiIdea {
+  id: string;
+  hook: string;
+  description?: string;
+  format?: string;
   platform?: string;
-  status: "empty" | "planned" | "generated" | "posted";
 }
 
-const initialDays: PlannerDay[] = [
-  { date: 17, day: "Mon", topic: "The Hidden Cost of Context Switching", platform: "twitter", status: "posted" },
-  { date: 18, day: "Tue", topic: "5 Morning Habits of Successful Founders", platform: "linkedin", status: "generated" },
-  { date: 19, day: "Wed", topic: "Why Your First 100 Users Matter", platform: "twitter", status: "planned" },
-  { date: 20, day: "Thu", status: "empty" },
-  { date: 21, day: "Fri", topic: "Building in Public: Lessons Learned", platform: "blog", status: "planned" },
-  { date: 22, day: "Sat", status: "empty" },
-  { date: 23, day: "Sun", status: "empty" },
-];
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-const platformIcons = {
-  twitter: Twitter,
-  linkedin: Linkedin,
-  blog: FileText,
-};
-
-const statusColors = {
-  empty: "border-dashed border-border",
-  planned: "border-warning/50 bg-warning/5",
-  generated: "border-accent/50 bg-accent/5",
-  posted: "border-success/50 bg-success/5",
-};
-
-const statusLabels = {
-  empty: { label: "Empty", color: "outline" },
-  planned: { label: "Planned", color: "warning" },
-  generated: { label: "Ready", color: "accent" },
-  posted: { label: "Posted", color: "success" },
-};
-
-const Planner = () => {
-  const [days, setDays] = useState<PlannerDay[]>(initialDays);
-  const [editingDay, setEditingDay] = useState<number | null>(null);
-  const [editTopic, setEditTopic] = useState("");
-  const [isGeneratingAll, setIsGeneratingAll] = useState(false);
-
-  const startEditing = (date: number, currentTopic: string = "") => {
-    setEditingDay(date);
-    setEditTopic(currentTopic);
+function mapApiIdeaToFavoritedIdea(idea: ApiIdea): FavoritedIdea {
+  return {
+    id: idea.id,
+    hook: idea.hook,
+    description: idea.description,
+    format: idea.format as FavoritedIdea["format"],
+    platform: idea.platform as FavoritedIdea["platform"],
   };
+}
 
-  const saveEdit = (date: number) => {
-    if (editTopic.trim()) {
-      setDays(days.map((d) =>
-        d.date === date
-          ? { ...d, topic: editTopic, status: "planned", platform: d.platform || "twitter" }
-          : d
-      ));
-    }
-    setEditingDay(null);
-    setEditTopic("");
-  };
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
-  const cancelEdit = () => {
-    setEditingDay(null);
-    setEditTopic("");
-  };
-
-  const deleteTopic = (date: number) => {
-    setDays(days.map((d) =>
-      d.date === date
-        ? { ...d, topic: undefined, platform: undefined, status: "empty" }
-        : d
-    ));
-  };
-
-  const generateAll = () => {
-    setIsGeneratingAll(true);
-    setTimeout(() => {
-      setDays(days.map((d) =>
-        d.status === "planned" ? { ...d, status: "generated" } : d
-      ));
-      setIsGeneratingAll(false);
-    }, 3000);
-  };
-
-  const clearWeek = () => {
-    setDays(days.map((d) => ({
-      ...d,
-      topic: undefined,
-      platform: undefined,
-      status: "empty",
-    })));
-  };
-
-  const plannedCount = days.filter((d) => d.status !== "empty").length;
-
-  return (
-      <div className="p-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
-          <div>
-            <h1 className="font-heading text-3xl font-bold mb-1">Weekly Planner</h1>
-            <p className="text-muted-foreground">
-              Plan and schedule your content for the week.
-            </p>
-          </div>
-          <div className="flex gap-3">
-            <Button
-              variant="outline"
-              onClick={clearWeek}
-              disabled={plannedCount === 0}
-            >
-              <Trash2 size={18} />
-              Clear Week
-            </Button>
-            <Button
-              variant="gradient"
-              onClick={generateAll}
-              disabled={isGeneratingAll || days.filter((d) => d.status === "planned").length === 0}
-            >
-              {isGeneratingAll ? (
-                <>
-                  <Loader2 className="animate-spin" size={18} />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Sparkles size={18} />
-                  Generate All
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-
-        {/* Week Navigation */}
-        <div className="flex items-center justify-between mb-6">
-          <Button variant="ghost" size="icon">
-            <ChevronLeft size={20} />
-          </Button>
-          <div className="text-center">
-            <h2 className="font-heading font-semibold text-lg">December 2024</h2>
-            <p className="text-sm text-muted-foreground">Week 51</p>
-          </div>
-          <Button variant="ghost" size="icon">
-            <ChevronRight size={20} />
-          </Button>
-        </div>
-
-        {/* Calendar Grid */}
-        <div className="grid grid-cols-7 gap-4">
-          {days.map((day, index) => {
-            const isEditing = editingDay === day.date;
-            const PlatformIcon = day.platform ? platformIcons[day.platform as keyof typeof platformIcons] : null;
-
-            return (
-              <div
-                key={day.date}
-                className={cn(
-                  " animate-fade-in"
-                )}
-                style={{ animationDelay: `${index * 0.05}s`, animationFillMode: "forwards" }}
-              >
-                <GlassCard
-                  className={cn(
-                    "p-4 min-h-[200px] flex flex-col transition-all",
-                    statusColors[day.status]
-                  )}
-                >
-                  {/* Day Header */}
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <p className="text-xs text-muted-foreground">{day.day}</p>
-                      <p className="font-mono font-bold text-lg">{day.date}</p>
-                    </div>
-                    {day.status !== "empty" && (
-                      <Badge variant={statusLabels[day.status].color as "warning" | "accent" | "success" | "outline"} className="text-xs">
-                        {statusLabels[day.status].label}
-                      </Badge>
-                    )}
-                  </div>
-
-                  {/* Content */}
-                  <div className="flex-1">
-                    {isEditing ? (
-                      <div className="space-y-2">
-                        <textarea
-                          autoFocus
-                          placeholder="Enter topic..."
-                          className="w-full bg-background-secondary border border-border rounded p-2 text-sm resize-none h-20 focus:outline-none focus:border-primary/50"
-                          value={editTopic}
-                          onChange={(e) => setEditTopic(e.target.value)}
-                        />
-                        <div className="flex gap-1">
-                          <Button size="sm" variant="default" className="flex-1" onClick={() => saveEdit(day.date)}>
-                            <Check size={14} />
-                          </Button>
-                          <Button size="sm" variant="ghost" className="flex-1" onClick={cancelEdit}>
-                            <X size={14} />
-                          </Button>
-                        </div>
-                      </div>
-                    ) : day.topic ? (
-                      <div>
-                        <p className="text-sm font-medium mb-2 line-clamp-3">{day.topic}</p>
-                        {PlatformIcon && (
-                          <div className="flex items-center gap-2 text-muted-foreground">
-                            <PlatformIcon size={14} />
-                            <span className="text-xs capitalize">{day.platform}</span>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => startEditing(day.date)}
-                        className="w-full h-full flex flex-col items-center justify-center text-muted-foreground hover:text-primary transition-colors"
-                      >
-                        <Plus size={24} />
-                        <span className="text-xs mt-1">Add Topic</span>
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Actions */}
-                  {day.topic && !isEditing && (
-                    <div className="flex gap-1 mt-3 pt-3 border-t border-border/50">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="flex-1 h-8"
-                        onClick={() => startEditing(day.date, day.topic)}
-                      >
-                        <Edit2 size={14} />
-                      </Button>
-                      {day.status === "planned" && (
-                        <Button size="sm" variant="ghost" className="flex-1 h-8">
-                          <Sparkles size={14} />
-                        </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="flex-1 h-8 text-destructive hover:text-destructive"
-                        onClick={() => deleteTopic(day.date)}
-                      >
-                        <Trash2 size={14} />
-                      </Button>
-                    </div>
-                  )}
-                </GlassCard>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Stats */}
-        <div className="mt-8 flex flex-wrap gap-4">
-          <GlassCard className="px-4 py-3 flex items-center gap-3">
-            <div className="w-3 h-3 rounded-full bg-warning" />
-            <span className="text-sm">
-              {days.filter((d) => d.status === "planned").length} Planned
-            </span>
-          </GlassCard>
-          <GlassCard className="px-4 py-3 flex items-center gap-3">
-            <div className="w-3 h-3 rounded-full bg-accent" />
-            <span className="text-sm">
-              {days.filter((d) => d.status === "generated").length} Ready
-            </span>
-          </GlassCard>
-          <GlassCard className="px-4 py-3 flex items-center gap-3">
-            <div className="w-3 h-3 rounded-full bg-success" />
-            <span className="text-sm">
-              {days.filter((d) => d.status === "posted").length} Posted
-            </span>
-          </GlassCard>
-        </div>
-      </div>
+export function WeeklyPlannerView() {
+  // ── Week navigation ───────────────────────────────────────────────────────
+  const [currentMonday, setCurrentMonday] = useState<Date>(() =>
+    getWeekMonday(new Date())
   );
-};
 
-export default Planner;
+  const weekLabel = formatWeekLabel(currentMonday);
+
+  const goToPrevWeek = () =>
+    setCurrentMonday((prev) => addDays(prev, -7));
+
+  const goToNextWeek = () =>
+    setCurrentMonday((prev) => addDays(prev, 7));
+
+  const goToCurrentWeek = () =>
+    setCurrentMonday(getWeekMonday(new Date()));
+
+  const goToWeek = (date: Date) =>
+    setCurrentMonday(getWeekMonday(date));
+
+  // ── Core state ────────────────────────────────────────────────────────────
+  const [plan, setPlan] = useState<WeeklyPlan | null>(null);
+  const [favoriteIdeas, setFavoriteIdeas] = useState<FavoritedIdea[]>([]);
+
+  const [isPlanLoading, setIsPlanLoading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isLoading, setIsLoading] = useState(false); // shared mutation loading
+
+  const [is404, setIs404] = useState(false);
+
+  // ── Modal / UI state ──────────────────────────────────────────────────────
+  const [editingPost, setEditingPost] = useState<ScheduledPost | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addDay, setAddDay] = useState<DayIndex>(0);
+  const [prefilledIdea, setPrefilledIdea] = useState<FavoritedIdea | null>(
+    null
+  );
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  const planId = plan?.id ?? null;
+
+  // ── Derived: unscheduled ideas ────────────────────────────────────────────
+  const unscheduledIdeas = useMemo<FavoritedIdea[]>(() => {
+    if (!plan || !favoriteIdeas.length) return [];
+    const ids = new Set(plan.plan.unscheduledIdeaIds);
+    return favoriteIdeas.filter((i) => ids.has(i.id));
+  }, [plan, favoriteIdeas]);
+
+  // ── Fetch plan for current week ───────────────────────────────────────────
+  useEffect(() => {
+    const fetchPlan = async () => {
+      setIsPlanLoading(true);
+      setIs404(false);
+      setPlan(null);
+
+      try {
+        const weekStart = formatYMD(currentMonday);
+        const response = await axios.get<WeeklyPlan>(
+          `${getBackendUrl()}/planner/${weekStart}`,
+          { withCredentials: true }
+        );
+        setPlan(response.data);
+      } catch (error) {
+        if (axios.isAxiosError(error)) {
+          if (error.response?.status === 404) {
+            setIs404(true);
+          } else {
+            toast.error(
+              error.response?.data?.message ?? "Failed to load plan"
+            );
+          }
+        } else {
+          toast.error("An unexpected error occurred");
+        }
+      } finally {
+        setIsPlanLoading(false);
+      }
+    };
+
+    fetchPlan();
+  }, [currentMonday]);
+
+  // ── Fetch favorite ideas (once) ───────────────────────────────────────────
+  useEffect(() => {
+    const fetchFavorites = async () => {
+      try {
+        const response = await axios.get<ApiIdea[]>(
+          `${getBackendUrl()}/ideas/favorites`,
+          { withCredentials: true }
+        );
+        setFavoriteIdeas(response.data.map(mapApiIdeaToFavoritedIdea));
+      } catch (error) {
+        if (axios.isAxiosError(error)) {
+          toast.error(
+            error.response?.data?.message ?? "Failed to fetch ideas"
+          );
+        } else {
+          toast.error("An unexpected error occurred");
+        }
+      }
+    };
+
+    fetchFavorites();
+  }, []);
+
+  // ── Generate / regenerate plan ────────────────────────────────────────────
+  const handleGenerate = async () => {
+    setIsGenerating(true);
+    try {
+      const weekStart = formatYMD(currentMonday);
+      const response = await axios.post<WeeklyPlan>(
+        `${getBackendUrl()}/planner/generate`,
+        { weekStart },
+        { withCredentials: true }
+      );
+      setPlan(response.data);
+      setIs404(false);
+      toast.success("Plan generated!");
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        toast.error(
+          error.response?.data?.message ?? "Failed to generate plan"
+        );
+      } else {
+        toast.error("An unexpected error occurred");
+      }
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // ── Add slot ──────────────────────────────────────────────────────────────
+  const handleAddSave = async (payload: SlotCreatePayload) => {
+    if (!planId) return;
+    setIsLoading(true);
+    try {
+      const response = await axios.post<WeeklyPlan>(
+        `${getBackendUrl()}/planner/${planId}/slots`,
+        payload,
+        { withCredentials: true }
+      );
+      setPlan(response.data);
+      setAddOpen(false);
+      toast.success("Post added!");
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        toast.error(
+          error.response?.data?.message ?? "Failed to add post"
+        );
+      } else {
+        toast.error("An unexpected error occurred");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ── Edit / update slot ────────────────────────────────────────────────────
+  const handleEditSave = async (
+    slotId: string,
+    payload: SlotUpdatePayload
+  ) => {
+    if (!planId) return;
+    setIsLoading(true);
+    try {
+      const response = await axios.patch<WeeklyPlan>(
+        `${getBackendUrl()}/planner/${planId}/slots/${slotId}`,
+        payload,
+        { withCredentials: true }
+      );
+      setPlan(response.data);
+      setEditingPost(null);
+      toast.success("Post updated!");
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        toast.error(
+          error.response?.data?.message ?? "Failed to update post"
+        );
+      } else {
+        toast.error("An unexpected error occurred");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ── Delete slot ───────────────────────────────────────────────────────────
+  const handleDeletePost = async (slotId: string) => {
+    if (!planId) return;
+    setIsLoading(true);
+    try {
+      await axios.delete(
+        `${getBackendUrl()}/planner/${planId}/slots/${slotId}`,
+        { withCredentials: true }
+      );
+      // DELETE returns 204 — remove the slot from local state directly
+      setPlan((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          plan: {
+            ...prev.plan,
+            posts: prev.plan.posts.filter((p) => p.id !== slotId),
+          },
+        };
+      });
+      toast.success("Post removed");
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        toast.error(
+          error.response?.data?.message ?? "Failed to delete post"
+        );
+      } else {
+        toast.error("An unexpected error occurred");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ── Mark posted ───────────────────────────────────────────────────────────
+  const handleMarkPosted = async (slotId: string) => {
+    if (!planId) return;
+    setIsLoading(true);
+    try {
+      const response = await axios.patch<WeeklyPlan>(
+        `${getBackendUrl()}/planner/${planId}/slots/${slotId}/posted`,
+        {},
+        { withCredentials: true }
+      );
+      setPlan(response.data);
+      toast.success("Marked as posted!");
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        toast.error(
+          error.response?.data?.message ?? "Failed to mark as posted"
+        );
+      } else {
+        toast.error("An unexpected error occurred");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ── Mark skipped ──────────────────────────────────────────────────────────
+  const handleMarkSkipped = async (slotId: string) => {
+    if (!planId) return;
+    setIsLoading(true);
+    try {
+      const response = await axios.patch<WeeklyPlan>(
+        `${getBackendUrl()}/planner/${planId}/slots/${slotId}/skipped`,
+        {},
+        { withCredentials: true }
+      );
+      setPlan(response.data);
+      toast.success("Post skipped");
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        toast.error(
+          error.response?.data?.message ?? "Failed to mark as skipped"
+        );
+      } else {
+        toast.error("An unexpected error occurred");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ── Add slot handlers ─────────────────────────────────────────────────────
+  const handleAdd = (day: DayIndex) => {
+    setAddDay(day);
+    setPrefilledIdea(null);
+    setAddOpen(true);
+  };
+
+  const handleScheduleIdea = (idea: FavoritedIdea) => {
+    setAddDay(0);
+    setPrefilledIdea(idea);
+    setAddOpen(true);
+  };
+
+  // ── Render grid area ──────────────────────────────────────────────────────
+  const renderGridArea = () => {
+    if (isPlanLoading) return <PlannerSkeleton />;
+
+    if (is404 || !plan) {
+      return (
+        <EmptyPlannerState
+          onGenerate={handleGenerate}
+          isGenerating={isGenerating}
+        />
+      );
+    }
+
+    return (
+      <>
+        <GeneratePlanBar plan={plan} />
+        <WeekGrid
+          weekStart={currentMonday}
+          posts={plan.plan.posts}
+          reminders={plan.plan.reminders}
+          onAdd={handleAdd}
+          onEditPost={setEditingPost}
+          onDeletePost={handleDeletePost}
+          onMarkPosted={handleMarkPosted}
+          onMarkSkipped={handleMarkSkipped}
+        />
+      </>
+    );
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  return (
+    <div className="p-6 lg:p-8">
+      <PlannerHeader
+        weekLabel={weekLabel}
+        onPrev={goToPrevWeek}
+        onNext={goToNextWeek}
+        onToday={goToCurrentWeek}
+        onGenerate={handleGenerate}
+        onOpenHistory={() => setHistoryOpen(true)}
+        isGenerating={isGenerating}
+        hasExistingPlan={!!plan}
+      />
+
+      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+        <div className="min-w-0">{renderGridArea()}</div>
+
+        {plan && (
+          <div className="flex flex-col gap-4">
+            <UnscheduledIdeasPanel
+              ideas={unscheduledIdeas}
+              onSchedule={handleScheduleIdea}
+            />
+            <RemindersPanel reminders={plan.plan.reminders} />
+          </div>
+        )}
+      </div>
+
+      <EditSlotModal
+        open={!!editingPost}
+        post={editingPost}
+        isSaving={isLoading}
+        onClose={() => setEditingPost(null)}
+        onSave={handleEditSave}
+      />
+
+      <AddSlotModal
+        open={addOpen}
+        defaultDay={addDay}
+        unscheduledIdeas={
+          prefilledIdea
+            ? [
+                prefilledIdea,
+                ...unscheduledIdeas.filter((i) => i.id !== prefilledIdea.id),
+              ]
+            : unscheduledIdeas
+        }
+        isSaving={isLoading}
+        onClose={() => setAddOpen(false)}
+        onSave={handleAddSave}
+      />
+
+      <HistoryDialog
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        onOpenPlan={(p) => goToWeek(new Date(p.weekStart))}
+      />
+    </div>
+  );
+}
