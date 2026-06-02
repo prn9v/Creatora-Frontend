@@ -8,7 +8,7 @@ import type {
   ScheduledPost,
 } from "@/types/Planner";
 import { ReminderCard } from "../RemainderCard";
-import { PostCard } from "../../GeneratedPosts/PostCard";
+import { PostCard } from "../PostCard";
 
 interface DayColumnProps {
   dayIndex: DayIndex;
