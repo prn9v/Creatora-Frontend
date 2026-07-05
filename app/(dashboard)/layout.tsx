@@ -2,6 +2,7 @@
 import { useState, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import DashboardSidebar from "@/components/Dashboard/Sidebar";
+import ChatBot from "@/components/chatbot";
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -21,6 +22,7 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
       >
         {children}
       </main>
+      <ChatBot />
     </div>
   );
 };
